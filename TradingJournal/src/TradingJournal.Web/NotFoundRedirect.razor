@@ -1,0 +1,14 @@
+﻿@inject NavigationManager Navigation
+
+<MudText Typo="Typo.body1">Redirecting...</MudText>
+
+@code {
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender)
+        {
+            Navigation.NavigateTo("/not-found", replace: true);
+        }
+    }
+}
+

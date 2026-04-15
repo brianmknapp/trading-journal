@@ -1,0 +1,178 @@
+﻿@page "/"
+@using System.Globalization
+
+<PageTitle>Dashboard</PageTitle>
+
+<MudText Typo="Typo.h4" HtmlTag="h1" GutterBottom="true">Trading Journal</MudText>
+<MudText Typo="Typo.subtitle1" Class="mb-4">Track a simple Profit/Loss trend while core journaling features are being added.</MudText>
+
+<MudGrid>
+    <MudItem xs="12" md="4">
+        <MudPaper Class="pa-4 h-100">
+            <MudText Typo="Typo.overline">Profit / Loss</MudText>
+            <MudText Typo="Typo.h3" Class="@ProfitLossColorClass">@FormatCurrency(_totalProfitLoss)</MudText>
+            <MudText Typo="Typo.body2">Selected period total</MudText>
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" md="8">
+        <MudPaper Class="pa-4 h-100">
+            <MudStack Row="true" Wrap="Wrap.Wrap" AlignItems="AlignItems.Center" Spacing="2" Class="mb-4">
+                <MudSelect T="PnlRangePreset"
+                           Label="Range"
+                           Value="_selectedRange"
+                           ValueChanged="OnRangeChanged"
+                           Variant="Variant.Outlined"
+                           Dense="true"
+                           Style="min-width: 260px;">
+                    <MudSelectItem Value="PnlRangePreset.CalendarSpread">Calendar spread</MudSelectItem>
+                    <MudSelectItem Value="PnlRangePreset.MonthToDate">Current month to date</MudSelectItem>
+                    <MudSelectItem Value="PnlRangePreset.YearToDate">Current year to date</MudSelectItem>
+                </MudSelect>
+
+                @if (_selectedRange == PnlRangePreset.CalendarSpread)
+                {
+                    <MudDatePicker Label="Start" @bind-Date="_calendarStart" Variant="Variant.Outlined" />
+                    <MudDatePicker Label="End" @bind-Date="_calendarEnd" Variant="Variant.Outlined" />
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               Disabled="@(!_calendarStart.HasValue || !_calendarEnd.HasValue)"
+                               OnClick="ApplyCalendarRange">
+                        Apply
+                    </MudButton>
+                }
+            </MudStack>
+
+            <MudChart T="double"
+                      ChartType="ChartType.Line"
+                      ChartSeries="_chartSeries"
+                      ChartLabels="_chartLabels"
+                      Width="100%"
+                      Height="300px" />
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@code {
+    private readonly List<PnlPoint> _allPoints = BuildSamplePoints();
+
+    private PnlRangePreset _selectedRange = PnlRangePreset.MonthToDate;
+    private DateTime? _calendarStart;
+    private DateTime? _calendarEnd;
+
+    private string[] _chartLabels = Array.Empty<string>();
+    private List<ChartSeries<double>> _chartSeries = [new ChartSeries<double> { Name = "P/L", Data = [] }];
+    private decimal _totalProfitLoss;
+
+    private string ProfitLossColorClass => _totalProfitLoss >= 0 ? "mud-success-text" : "mud-error-text";
+
+    protected override void OnInitialized()
+    {
+        var today = DateTime.Today;
+        _calendarStart = today.AddDays(-29);
+        _calendarEnd = today;
+
+        RefreshDashboard();
+    }
+
+    private Task OnRangeChanged(PnlRangePreset range)
+    {
+        _selectedRange = range;
+        RefreshDashboard();
+        return Task.CompletedTask;
+    }
+
+    private void ApplyCalendarRange()
+    {
+        if (_calendarStart.HasValue && _calendarEnd.HasValue)
+        {
+            RefreshDashboard();
+        }
+    }
+
+    private void RefreshDashboard()
+    {
+        var filtered = GetFilteredPoints().OrderBy(point => point.Date).ToList();
+        if (filtered.Count == 0)
+        {
+            _totalProfitLoss = 0m;
+            _chartLabels = Array.Empty<string>();
+            _chartSeries = [new ChartSeries<double> { Name = "P/L", Data = [] }];
+            return;
+        }
+
+        _totalProfitLoss = filtered.Sum(point => point.DailyProfitLoss);
+        _chartLabels = filtered.Select(point => point.Date.ToString("MM/dd", CultureInfo.InvariantCulture)).ToArray();
+        _chartSeries =
+        [
+            new ChartSeries<double>
+            {
+                Name = "P/L",
+                Data = filtered.Select(point => (double)point.DailyProfitLoss).ToList()
+            }
+        ];
+    }
+
+    private IEnumerable<PnlPoint> GetFilteredPoints()
+    {
+        var today = DateTime.Today;
+
+        DateTime startDate;
+        DateTime endDate;
+
+        switch (_selectedRange)
+        {
+            case PnlRangePreset.CalendarSpread:
+                startDate = (_calendarStart ?? today.AddDays(-29)).Date;
+                endDate = (_calendarEnd ?? today).Date;
+                if (endDate < startDate)
+                {
+                    (startDate, endDate) = (endDate, startDate);
+                }
+                break;
+            case PnlRangePreset.YearToDate:
+                startDate = new DateTime(today.Year, 1, 1);
+                endDate = today;
+                break;
+            default:
+                startDate = new DateTime(today.Year, today.Month, 1);
+                endDate = today;
+                break;
+        }
+
+        return _allPoints.Where(point => point.Date >= startDate && point.Date <= endDate);
+    }
+
+    private static string FormatCurrency(decimal amount)
+    {
+        return amount.ToString("C2", CultureInfo.CurrentCulture);
+    }
+
+    private static List<PnlPoint> BuildSamplePoints()
+    {
+        var today = DateTime.Today;
+        var start = today.AddDays(-365);
+        var points = new List<PnlPoint>();
+
+        for (var date = start; date <= today; date = date.AddDays(1))
+        {
+            var dayIndex = (date - start).Days;
+            var trend = Math.Sin(dayIndex / 11.0) * 85d;
+            var bias = (dayIndex % 9) - 4;
+            var dailyProfitLoss = Math.Round((decimal)(trend + (bias * 12)), 2);
+
+            points.Add(new PnlPoint(date, dailyProfitLoss));
+        }
+
+        return points;
+    }
+
+    private enum PnlRangePreset
+    {
+        CalendarSpread,
+        MonthToDate,
+        YearToDate
+    }
+
+    private sealed record PnlPoint(DateTime Date, decimal DailyProfitLoss);
+}
