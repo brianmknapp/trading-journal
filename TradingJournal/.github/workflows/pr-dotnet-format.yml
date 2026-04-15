@@ -17,10 +17,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup .NET from global.json
+      - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
+
+      - name: Show .NET SDK version
+        run: dotnet --version
 
       - name: Restore
         run: dotnet restore TradingJournal.sln
